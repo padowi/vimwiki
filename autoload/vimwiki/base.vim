@@ -770,6 +770,47 @@ function! vimwiki#base#check_links()
   endif
 endfunction
 
+" write a level 1 header to new wiki files
+function! s:create_h1(fname, create)
+  if vimwiki#vars#get_global('auto_header')
+    if a:create
+      let idx = vimwiki#vars#get_bufferlocal('wiki_nr')
+
+      " don't create header for the diary index page
+      if vimwiki#path#is_equal(a:fname,
+            \ vimwiki#vars#get_wikilocal('path', idx).vimwiki#vars#get_wikilocal('diary_rel_path', idx).
+            \ vimwiki#vars#get_wikilocal('diary_index', idx).vimwiki#vars#get_wikilocal('ext', idx))
+        return
+      endif
+
+      " get tail of filename without extension
+      let title = expand('%:t:r')
+
+      " don't insert header for index page
+      if title ==# vimwiki#vars#get_wikilocal('index', idx)
+        return
+      endif
+
+      " don't substitute space char for diary pages
+      if title !~# '^\d\{4}-\d\d-\d\d'
+        " NOTE: it is possible this could remove desired characters if the 'links_space_char'
+        " character matches characters that are intentionally used in the title.
+        let title = substitute(title, vimwiki#vars#get_wikilocal('links_space_char'), ' ', 'g')
+      endif
+
+      " insert the header
+      if vimwiki#vars#get_wikilocal('syntax') ==? 'markdown'
+        keepjumps call append(0, '# ' . title)
+        for _ in range(vimwiki#vars#get_global('markdown_header_style'))
+          keepjumps call append(1, '')
+        endfor
+      else
+        keepjumps call append(0, '= ' . title . ' =')
+      endif
+
+    endif
+  endif
+endfunction
 
 function! vimwiki#base#edit_file(command, filename, anchor, ...)
   let fname = escape(a:filename, '% *|#`')
@@ -781,6 +822,14 @@ function! vimwiki#base#edit_file(command, filename, anchor, ...)
     echomsg ' '
     echomsg 'Vimwiki Error: Unable to edit file in non-existent directory: '.dir
     return
+  endif
+
+  " determine if file is being created for the first time
+  " also check that it isn't in an open buffer that hasn't been saved
+  if !filereadable(fname) && bufnr(fname) == -1
+    let newfile = 1
+  else
+    let newfile = 0
   endif
 
   " Check if the file we want to open is already the current file
@@ -795,6 +844,7 @@ function! vimwiki#base#edit_file(command, filename, anchor, ...)
     else
       try
         execute a:command fname
+        call s:create_h1(fname, newfile)
       catch /E37:/
         echomsg 'Vimwiki: Can''t leave the current buffer, because it is modified. Hint: Take a look at'
               \ ''':h g:vimwiki_autowriteall'' to see how to save automatically.'
